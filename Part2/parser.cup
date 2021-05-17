@@ -1,0 +1,183 @@
+/* Simple +/-/* expression language; parser evaluates constant expressions on the fly*/
+/**
+ *  Package and Import Specifications
+ */
+import java_cup.runtime.*;
+
+/**
+ *  Usercode Components
+ */
+parser code {:
+    // Connect this parser to a scanner!
+    Scanner s;
+    Parser(Scanner s){ this.s=s; }
+    /*This function is half-implemented*/
+    /*Calls are printed and declaration return the expression*/
+    /*It is used only for declarations!*/
+    /*Its use is not even necessary*/
+    String makeString(String str, Integer flag) {
+	if (flag == 0) {
+		return String.format("return %s;\n", str);
+	}
+	else if (flag == 1) {
+		return String.format("System.out.println(str);");
+	}
+	return "";
+    }
+    /*BODY keeps the whole body of main*/
+    public static String BODY = "";
+    void addString(String str) {
+	BODY += str;
+    }
+:}
+
+/* define how to connect to the scanner! */
+scan with {: return s.next_token(); :};
+
+/**
+ *  Symbol Lists
+ */
+
+/* Terminals (tokens returned by the scanner). */
+terminal            CONC, RPAREN, LPAREN, RBRACKET, IF, ELSE, PREFIX, SUFFIX, COMMA, DECL;
+terminal String     STRING_LITERAL, VAR;
+
+/*  Non terminals */
+non terminal           S; 
+non terminal String    program, mainBody, mainBody2, exprMain, exprMain2, funBody, exprFun, condFun, condMain, declaration_or_call, dec_tail,    			callFun, callMain, argsCallFun, argsCallFunTail, argsCallMain,  argsCallMainTail, argsDecl, argsDeclTail;
+
+/**
+ *  Precedence Declarations
+ */
+
+precedence left CONC;
+precedence nonassoc VAR;
+precedence nonassoc STRING_LITERAL;
+precedence nonassoc IF;
+
+/**
+ *  The Grammar Rules
+ */
+
+ 
+
+S ::= program:p {:
+			System.out.println("import java.lang.String;\n");
+			System.out.println("public class Main {");
+			System.out.println("\tpublic static void main(String[] args) {");
+			System.out.printf("%s\n\t}%s\n}\n", BODY, p);
+			 :}
+;
+
+
+
+program ::=  declaration_or_call:d 				{: RESULT = String.format("\n\t%s", d); :}
+	;
+
+dec_tail ::= declaration_or_call:d				{: RESULT = String.format("%s", d); :}
+	;
+
+/* If a declaration is parsed, we search for declaration/call/expression. */
+/* If a call is parsed, we continue with the main's body parse. */
+/* If none of the above go to mainBody2 that is an expression without a call. */
+/* (From there continue with any expression) */
+/* Else we have empty program or only declarations. */
+declaration_or_call ::= VAR:fun LPAREN argsDecl:a funBody:b dec_tail:d	  {: RESULT = String.format
+							("public static String %s (%s) {\n\t\t%s\t}\n\t%s",fun, a, makeString(b, 0), d);
+							:}
+
+	|VAR:fun LPAREN argsCallMain:a mainBody:b	  		{: RESULT = ""; 
+						addString(String.format("\t\tSystem.out.println(%s(%s)); \n\t\t%s\n",fun, a, b));
+							:}
+
+	|mainBody2:b					{: RESULT = ""; addString(String.format("\t\t%s", b)); :}
+
+	| 						{: RESULT = String.format(""); :}
+	;
+
+mainBody ::= exprMain:e mainBody:b				{: RESULT = String.format("System.out.println(%s);\n\t\t%s", e, b); :}
+	| 						{: RESULT = String.format(""); :}
+	;
+
+/* mainBody2 practically the beginning of main's body. */
+mainBody2 ::= exprMain2:e mainBody:b			{: RESULT = String.format("System.out.println(%s);\n\t\t%s", e, b); :}
+	;
+
+funBody ::= VAR:ident RBRACKET 				{: RESULT = String.format("%s", ident); :}
+	 | exprFun:e RBRACKET 				{: RESULT = String.format("%s", e); :} 
+	;
+
+exprFun ::= callFun:a					{: RESULT = String.format("%s", a); :}
+	| exprFun:e1 CONC exprFun:e2				{: RESULT = String.format("%s + %s", e1, e2); :}
+	| exprFun:e1 CONC VAR:e2				{: RESULT = String.format("%s + %s", e1, e2); :}
+	| VAR:e1 CONC exprFun:e2				{: RESULT = String.format("%s + %s", e1, e2); :}
+	| VAR:e1 CONC VAR:e2				{: RESULT = String.format("%s + %s", e1, e2); :}
+	| IF LPAREN condFun:c RPAREN exprFun:e1 ELSE exprFun:e2 	{: RESULT = String.format("((%s) ? %s : %s)", c, e1, e2); :}
+	| IF LPAREN condFun:c RPAREN VAR:e1 ELSE exprFun:e2 	{: RESULT = String.format("((%s) ? %s : %s)", c, e1, e2); :}
+	| IF LPAREN condFun:c RPAREN exprFun:e1 ELSE VAR:e2 	{: RESULT = String.format("((%s) ? %s : %s)", c, e1, e2); :}
+	| IF LPAREN condFun:c RPAREN VAR:e1 ELSE VAR:e2 	{: RESULT = String.format("((%s) ? %s : %s)", c, e1, e2); :}
+	| STRING_LITERAL:str 				{: RESULT = String.format("\"%s\"", str); :}	
+	;
+
+exprMain ::= callMain:a					{: RESULT = String.format("%s", a); :}
+	| exprMain:e1 CONC exprMain:e2				{: RESULT = String.format("%s + %s", e1, e2); :}
+	| IF LPAREN condMain:c RPAREN exprMain:e1 ELSE exprMain:e2 	{: RESULT = String.format("((%s) ? %s : %s)", c, e1, e2); :}
+	| STRING_LITERAL:str 				{: RESULT = String.format("\"%s\"", str); :}	
+	;
+
+/* expr2 is same as expr but it does not include the --::= call-- production. */
+exprMain2 ::= exprMain:e1 CONC exprMain:e2				{: RESULT = String.format("%s + %s", e1, e2); :}
+	| exprMain:e1 CONC VAR:e2				{: RESULT = String.format("%s + %s", e1, e2); :}
+	| IF LPAREN condMain:c RPAREN exprMain:e1 ELSE exprMain:e2 	{: RESULT = String.format("((%s) ? %s : %s)", c, e1, e2); :}
+	| STRING_LITERAL:str 				{: RESULT = String.format("\"%s\"", str); :}	
+	;
+
+callMain ::= VAR:fun LPAREN argsCallMain:a  		{: RESULT = String.format("%s(%s)", fun, a); :}
+	;
+
+callFun ::= VAR:fun LPAREN argsCallFun:a  		{: RESULT = String.format("%s(%s)", fun, a); :}
+	;
+
+/* 4 cases for PREFIX and 4 for SUFFIX. */
+condFun ::= exprFun:e1 PREFIX exprFun:e2		{: RESULT = String.format("(%s).startsWith(%s)", e2, e1); :}
+	| VAR:e1 PREFIX exprFun:e2			{: RESULT = String.format("(%s).startsWith(%s)", e2, e1); :}
+	| exprFun:e1 PREFIX VAR:e2			{: RESULT = String.format("%s.startsWith(%s)", e2, e1); :}
+	| VAR:e1 PREFIX VAR:e2				{: RESULT = String.format("%s.startsWith(%s)", e2, e1); :}
+
+	| exprFun:e1 SUFFIX exprFun:e2			{: RESULT = String.format("(%s).endsWith(%s)", e2, e1); :}
+	| VAR:e1 SUFFIX exprFun:e2			{: RESULT = String.format("(%s).endsWith(%s)", e2, e1); :}
+	| VAR:e1 SUFFIX VAR:e2				{: RESULT = String.format("%s.endsWith(%s)", e2, e1); :}
+	| exprFun:e1 SUFFIX VAR:e2			{: RESULT = String.format("%s.endsWith(%s)", e2, e1); :}
+	;
+
+condMain ::= exprMain:e1 PREFIX exprMain:e2			{: RESULT = String.format("(%s).startsWith(%s)", e2, e1); :}
+	| exprMain:e1 SUFFIX exprMain:e2			{: RESULT = String.format("(%s).endsWith(%s)", e2, e1); :}
+	;
+
+/*The following rules decide if the arguments are in a declaration or a call. */
+
+argsDecl ::= VAR:var argsDeclTail:a DECL			{: RESULT = String.format("String %s%s", var, a); :}
+	| DECL							{: RESULT = String.format(""); :}
+	;
+
+argsDeclTail ::= COMMA VAR:var argsDeclTail:a 			{: RESULT = String.format(", String %s%s", var, a); :}
+	|							{: RESULT = String.format(""); :}
+	;
+
+argsCallFun ::= exprFun:e argsCallFunTail:a RPAREN 		{: RESULT = String.format("%s%s", e, a); :}
+	| VAR:e argsCallFunTail:a RPAREN			{: RESULT = String.format("%s%s", e, a); :}
+	| RPAREN						{: RESULT = String.format(""); :}
+	;
+
+argsCallFunTail ::= COMMA exprFun:e argsCallFunTail:a 		{: RESULT = String.format(", %s%s", e, a); :}
+	| COMMA VAR:e argsCallFunTail:a 			{: RESULT = String.format(", %s%s", e, a); :}
+	| 							{: RESULT = String.format(""); :}
+	;
+
+argsCallMain ::= exprMain:e argsCallMainTail:a RPAREN 		{: RESULT = String.format("%s%s", e, a); :}
+	| RPAREN						{: RESULT = String.format(""); :}
+	;
+
+argsCallMainTail ::= COMMA exprMain:e argsCallMainTail:a 	{: RESULT = String.format(", %s%s", e, a); :}
+	| 							{: RESULT = String.format(""); :}
+	;
